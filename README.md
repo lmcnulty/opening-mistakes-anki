@@ -3,7 +3,9 @@
 <figure>
 <img src="./screenshots/front-back.png" height="500" alt="An Anki card. The front shows the board after 1. e4 e5. The back shows the board after 2. Nf3, with a green arrow showing the Knight's move and a red arrow going from e1 to e2, suggesting that the bongcloud opening is repeated mistake the user has commited to fixing."/>
 <figcaption>
+
 **Red**: Mistake. **Green**: Book move.
+
 </figcaption>
 </figure>
 

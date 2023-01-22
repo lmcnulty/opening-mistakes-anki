@@ -1,0 +1,268 @@
+#!/usr/bin/env python3
+    
+def main():
+    parser = argparse.ArgumentParser(
+        prog='opening-mistakes-anki',
+        description=(
+            'Searches a PGN file for opening mistakes ' +
+            'and writes them to a CSV that can be imported into Anki'
+        )
+    )
+    parser.add_argument(
+        '-g', '--games-pgn',
+        help="A collection of games in PGN format."
+    )
+    parser.add_argument(
+        '-p', '--player-name', help=(
+            "The name, as it appears in the PGN file, " +
+            "of the player who wants to find their opening mistakes."
+        )
+    )
+    parser.add_argument(
+        '-b', '--opening-book', help=(
+            "An opening book in polyglot format, used to identify mistakes."
+        )
+    )
+
+    parser.add_argument(
+        '-l', '--limit', type=int, default=sys.maxsize, 
+        help="The maximum number of games to look at. Default: unbounded."
+    )
+    parser.add_argument(
+        '-c', '--card-count', type=int, default=sys.maxsize, 
+        help="The maximum number of cards to generate. Default: unbounded."
+    )
+    parser.add_argument(
+        '-t', '--threshold', type=int, default=2, help=(
+            "The number of times a mistake must have been made "
+            + " for it to be included."
+            + " Default: 2"
+        )
+    )
+    parser.add_argument(
+        '-o', '--output-file', default="mistakes.csv",
+        help="The file to write the CSV to."
+    )
+    args = parser.parse_args()
+
+    games_pgn = None
+    lichess_username = None
+
+    if args.games_pgn:
+        games_pgn = args.games_pgn
+    else:
+        print(
+            "You need to specify a pgn file " +
+            "containing a list of games to search for mistakes in. "
+        )
+
+        for file in os.listdir():
+            if ".pgn" in file:
+                if input(f"Use {file}? [y/n]: ").lower() in ['y', 'yes']:
+                    games_pgn = file
+                    break
+
+        if not games_pgn:
+
+            lichess_username = input(
+                "You can download your games from Lichess.\n\n"
+                "Enter your lichess username, or leave blank to exit: "
+            )
+            if lichess_username == "":
+                exit()
+            else:
+                games_pgn = lichess_username + '.pgn'
+                streamed_download(
+                    'https://lichess.org/api/games/user/' + lichess_username, 
+                    games_pgn
+                )
+
+    player = args.player_name or lichess_username
+    if not player:
+        print(
+            "You must specify the name of the player " +
+            "whose mistakes should be found " +
+            "using -p PLAYER_NAME"
+        )
+        exit()
+
+    opening_book = args.opening_book
+    if not opening_book:
+        print(
+            "You need to specify an opening book formatted as a polyglot file."
+        )
+        for file in os.listdir():
+            if ".bin" in file:
+                if input(f"Use opening book {file}? [y/n]: ").lower() in ['y', 'yes']:
+                    opening_book = file
+                    break
+
+        data_dir = appdirs.user_data_dir("opening-mistakes-anki")
+        if not os.path.exists(data_dir): 
+            os.mkdir(data_dir)
+
+        opening_books_dir = data_dir + os.path.sep + "opening-books"
+        if not os.path.exists(opening_books_dir):
+            os.mkdir(opening_books_dir)
+
+        archive_file =  data_dir + os.path.sep + 'polyglot_collection.7z'
+
+        if not opening_book and len(os.listdir(opening_books_dir)) < 1:
+            if input(
+                "Download some opening books? [y/n]: "
+            ).lower() in ['y', 'yes']:
+                streamed_download(
+                    'https://sourceforge.net/projects/codekiddy-chess/files/Books/Polyglot%20books/Update1/polyglot-collection.7z/download',
+                    archive_file
+                )
+                pyunpack.Archive(archive_file).extractall(opening_books_dir)
+
+            else:
+                exit()
+        
+        for file in os.listdir(opening_books_dir):
+            if ".bin" in file:
+                if input(f"Use opening book {file}? [y/n]: ").lower() in ['y', 'yes']:
+                    opening_book = opening_books_dir + os.path.sep + file
+                    break
+
+    openings = chess.polyglot.open_reader(opening_book)
+
+    with open(games_pgn) as f:
+        games = []
+        for i in range(args.limit):
+            game = chess.pgn.read_game(f)
+            if game:
+                games.append(game)
+            else: 
+                break
+
+    repeated_mistakes = collections.Counter()
+
+    for game in games:
+
+        player_color = (
+            chess.WHITE if game.headers.get('White') == player else 
+            chess.BLACK if game.headers.get('Black') == player else
+            None
+        )
+        board = game.board()
+
+        for i, move in enumerate(game.mainline_moves()):
+
+            is_players_turn = (
+                (player_color == chess.WHITE and i % 2 == 0) or 
+                (player_color == chess.BLACK and i % 2 == 1)
+            )
+            if is_players_turn:
+
+                book_moves = [e.move for e in openings.find_all(board)]
+                is_mistake = len(book_moves) > 0 and not move in book_moves 
+
+                if is_mistake:
+                    mistake = Mistake(board, move, player_color, book_moves[0])
+                    repeated_mistakes[mistake] += 1
+                    break
+
+            board.push(move)
+
+    with open(args.output_file, 'w') as csvfile:
+        csv_writer = csv.writer(csvfile, delimiter='\t',)
+        mistakes = repeated_mistakes.most_common(args.card_count)
+        for mistake, times_made in mistakes:
+            if times_made < args.threshold: continue
+            
+            initial_board_svg = chess.svg.board(
+                mistake.board, 
+                orientation=mistake.player_color,
+                size=350
+            )
+
+            answer_board = mistake.board.copy()
+            answer_board.push(mistake.book_move)
+            answer_board_svg = chess.svg.board(
+                answer_board,
+                orientation=mistake.player_color,
+                size=350,
+                arrows=[
+                    chess.svg.Arrow(
+                        mistake.book_move.from_square, 
+                        mistake.book_move.to_square, 
+                        color="green"
+                    ),
+                    chess.svg.Arrow(
+                        mistake.move.from_square,
+                        mistake.move.to_square,
+                        color="red"
+                    )
+                ]
+            )
+
+            front = (
+                initial_board_svg + '\n<p>' + 
+                ("White" if mistake.player_color == chess.WHITE else "Black") +
+                'to move.</p>'
+            )
+            back = answer_board_svg
+            tags = 'Chess'
+
+            csv_writer.writerow([front, back, tags])
+    print(
+        f"Wrote mistakes to '{args.output_file}'. " + 
+         "You can import it into Anki with file > import."
+    )
+
+class Mistake:
+    def __init__(self, board, move, player_color, book_move):
+        self.board = board
+        self.move = move
+        self.book_move = book_move
+        self.player_color = player_color
+    def __eq__(self, other):
+        return self.board == other.board and self.move == other.move
+    def __hash__(self):
+        return hash((self.board.__repr__(), str(self.move)))
+    def __repr__(self):
+        return self.board.board_fen() + ' - ' + str(self.move)
+
+def streamed_download(url, filename):
+    with requests.get( url, stream=True) as r:
+        r.raise_for_status()
+        with open(filename, 'wb') as f:
+            count = 0
+            for chunk in r.iter_content(chunk_size=8192): 
+                f.write(chunk)
+
+import csv
+import collections
+import argparse
+import sys
+import os
+import subprocess
+try:
+    import chess, chess.pgn, chess.polyglot, chess.svg 
+    import appdirs
+    import pyunpack
+    import requests
+    import patoolib
+except:
+    pypy_modules = [
+        'python-chess', 'appdirs', 'anki', 
+        'pyunpack', 'patool', 'requests'
+    ]
+    if input(
+        "You must have these modules installed: " + 
+        ' '.join(required_modules) +
+        "\nInstall them now? [y/n]: "
+    ).lower() in ['y', 'yes']:
+        pip_command = [sys.executable, '-m', 'pip', 'install'] + pypy_modules
+        subprocess.check_call(pip_command)
+        import chess, chess.pgn, chess.polyglot, chess.svg 
+        import appdirs
+    else:
+        print(
+            "Ok. You can install them at any time with: " + 
+            ' '.join(pip.command)
+        )
+        exit()
+main()

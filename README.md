@@ -1,13 +1,19 @@
 # Chess Opening Mistakes for Anki
 
-![An Anki card. The front shows the board after 1. e4 e5. The back shows the board after 2. Nf3, with a green arrow showing the Knight's move and a red arrow going from e1 to e2, suggesting that the bongcloud opening is repeated mistake the user has commited to fixing.](./screenshots/front-back.png)  
+<figure>
+<img src="./screenshots/front-back.png" height="500" alt="An Anki card. The front shows the board after 1. e4 e5. The back shows the board after 2. Nf3, with a green arrow showing the Knight's move and a red arrow going from e1 to e2, suggesting that the bongcloud opening is repeated mistake the user has commited to fixing."/>
+<figcaption>
 **Red**: Mistake. **Green**: Book move.
+</figcaption>
+</figure>
 
 ---
 
 This script will create a CSV file containing your opening mistakes. when you import it into Anki, make sure that you select "Fields separated by: Tab".
 
-![Anki import dialog indicated "Fields separated by: Tab"](./screenshots/import.png)
+<figure>
+<img src="./screenshots/import.png" height="300" alt="Anki import dialog indicating “Fields separated by: Tab”"/>
+</figure>
 
 The script is designed to be accessible to users with only very basic command line knowledge. When you run it without any arguments, it will offer to install its dependencies, download your lichess games to analyze, and download necessary opening books.
 

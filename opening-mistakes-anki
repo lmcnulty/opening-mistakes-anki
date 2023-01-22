@@ -201,7 +201,7 @@ def main():
             front = (
                 initial_board_svg + '\n<p>' + 
                 ("White" if mistake.player_color == chess.WHITE else "Black") +
-                'to move.</p>'
+                ' to move.</p>'
             )
             back = answer_board_svg
             tags = 'Chess'
